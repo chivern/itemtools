@@ -3,8 +3,7 @@
 // ======================================
 const GITHUB_USERNAME = "chivern";
 const REPO_NAME = "itemminitools";
-const GITHUB_RAW = `https://raw.githubusercontent.com/${GITHUB_USERNAME}/${REPO_NAME}/main/`;
-
+const GITHUB_RAW = `https://raw.githubusercontent.com/${GITHUB_USERNAME}/${REPO_NAME}/tree/main/`;
 const VERSION_URL = GITHUB_RAW + "version.json";
 const SCRIPT_URL = GITHUB_RAW + "content_script.js";
 
