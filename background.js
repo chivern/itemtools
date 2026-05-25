@@ -9,10 +9,8 @@ const SCRIPT_URL = GITHUB_RAW + "content_script.js";
 
 let localVersion = null;
 
-// 启动检查 + 每30分钟检查一次
+// 启动检查 
 checkUpdate();
-setInterval(checkUpdate, 30 * 60 * 1000);
-
 // ======================================
 // 检查更新
 // ======================================
