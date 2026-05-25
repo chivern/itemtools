@@ -13,7 +13,16 @@
 // @run-at       document-end
 // ==/UserScript==
 // ==/6666/8888==
-(function() {
+// 自动读取本地存储里的最新脚本（自动更新的）
+chrome.storage.local.get(["remoteScript"], (res) => {
+  if (res.remoteScript) {
+    try {
+      // 执行最新脚本
+      eval(res.remoteScript);
+    } catch (e) {}
+  } else {
+    console.log("使用本地默认脚本");
+    (function() {
     const url = location.href;
 
     // ==============================================
@@ -1563,3 +1572,7 @@
             }
         }
 })();
+  }
+});
+
+
