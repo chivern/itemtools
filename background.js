@@ -4,61 +4,56 @@
 const GITHUB_USERNAME = "chivern";
 const REPO_NAME = "itemminitools";
 const GITHUB_RAW = `https://raw.githubusercontent.com/${GITHUB_USERNAME}/${REPO_NAME}/tree/main/`;
+
 const VERSION_URL = GITHUB_RAW + "version.json";
 const SCRIPT_URL = GITHUB_RAW + "content_script.js";
 
 let localVersion = null;
 
-// 启动检查 
 checkUpdate();
-// ======================================
-// 检查更新
-// ======================================
-async function checkUpdate() {
-  try {
-    const versionRes = await fetch(VERSION_URL);
-    const { version } = await versionRes.json();
 
-    if (version === localVersion) return;
+async function checkUpdate() {
+  console.log("开始检测远程更新");
+  try {
+    const verRes = await fetch(VERSION_URL, {timeout:5000});
+    if(!verRes.ok) throw new Error("版本文件请求失败");
+    const {version} = await verRes.json();
+    console.log("远程版本：",version,"本地版本：",localVersion);
+
+    if(version === localVersion){
+      console.log("暂无新版本");
+      return;
+    }
     localVersion = version;
 
-    const codeRes = await fetch(SCRIPT_URL);
+    const codeRes = await fetch(SCRIPT_URL, {timeout:5000});
+    if(!codeRes.ok) throw new Error("脚本文件请求失败");
     const newCode = await codeRes.text();
-
     await injectToAllTabs(newCode);
-    console.log("✅ 小工具已自动更新至新版本：", version);
+    console.log("✅ 已更新到新版本",version);
   } catch (err) {
-    console.log("更新检查失败：", err);
+    console.error("更新检测失败：",err.message);
   }
 }
 
-// ======================================
-// 注入到淘宝/天猫所有页面
-// ======================================
 async function injectToAllTabs(code) {
   const tabs = await chrome.tabs.query({
-    url: [
-      "https://detail.tmall.com/*",
-      "https://item.taobao.com/*",
-      "https://*.tmall.com/*"
-    ]
+    url: ["https://detail.tmall.com/*","https://item.taobao.com/*","https://*.tmall.com/*"]
   });
-
-  for (const tab of tabs) {
-    try {
+  for(const tab of tabs){
+    try{
       await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: (remoteCode) => {
-          const oldScript = document.getElementById("remote-itemd-script");
-          if (oldScript) oldScript.remove();
-
-          const script = document.createElement("script");
+        target:{tabId:tab.id},
+        func:(remoteCode)=>{
+          let old = document.getElementById("remote-itemd-script");
+          old&&old.remove();
+          let script = document.createElement("script");
           script.id = "remote-itemd-script";
           script.textContent = remoteCode;
-          document.document.appendChild(script);
+          document.documentElement.appendChild(script);
         },
-        args: [code]
-      });
-    } catch (e) {}
+        args:[code]
+      })
+    }catch(e){}
   }
 }
