@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "itemd小工具",
+  "version": "2.0",
+  "description": "在网页加载完成点击执行。",
+  "icons": {
+    "128": "icon/icon.png"
+  },
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "downloads",
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://raw.githubusercontent.com/*",
+    "https://detail.tmall.com/*",
+    "https://item.taobao.com/*",
+    "https://*.tmall.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://detail.tmall.com/*",
+        "https://item.taobao.com/*",
+        "https://*.tmall.com/search.htm?*",
+        "https://*.tmall.com/index.htm?*",
+        "https://*.tmall.com/category.htm?*",
+        "https://*.tmall.com/shop/view_shop.htm?*"
+      ],
+      "js": ["content_script.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
