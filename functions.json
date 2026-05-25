@@ -1,0 +1,988 @@
+function displayitem1() {
+    try {
+        document.querySelectorAll('.header-extra, .skin-box.tb-module.tshop-pbsm.tshop-pbsm-tmall-srch-list')
+            .forEach(el => el.style.display = 'block');
+    } catch (e) {
+        console.warn?.('[Module] 显示模块失败:', e);
+    }
+
+    try {
+        const header = document.getElementById('headerCon');
+        if (header) {
+            header.style.height = '30px';
+            header.style.backgroundImage = 'none';
+            header.style.display = 'block';
+        }
+    } catch (e) {
+        console.warn?.('[Header] 调整 headerCon 失败:', e);
+    }
+
+    try {
+        const imgs = document.querySelectorAll('.photo img');
+        console.log(`[Image] 找到 ${imgs.length} 张待处理图片`);
+        imgs.forEach(img => {
+            const lazySrc = img.getAttribute('data-ks-lazyload');
+            if (lazySrc && !img.src) {
+                img.src = lazySrc;
+                img.removeAttribute('data-ks-lazyload');
+            }
+        });
+    } catch (e) {
+        console.warn?.('[Image] 图片加载失败:', e);
+    }
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', displayitem1);
+} else {
+    displayitem1();
+}
+
+
+function extractImgSrcByXPath(xpath) {
+    const currentDomain = window.location.hostname;
+    const condition1 = currentDomain.includes("item.taobao.com");
+    const condition2 = currentDomain.includes("detail.tmall.com");
+    if (!condition1 && !condition2) {
+        alert("当前域名不符合要求。");
+        return;
+    }
+
+    try {
+        console.log("XPath:", xpath);
+        const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+        let containerElement = result.singleNodeValue;
+
+        if (!containerElement) {
+            xpath = '//*[@id="imageTextInfo-container"]';
+            console.log("重试XPath:", xpath);
+            const retryResult = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+            containerElement = retryResult.singleNodeValue;
+            if (!containerElement) {
+                alert("未找到匹配的元素，请检查XPath路径。");
+                return;
+            }
+        }
+
+        const imgElements = containerElement.getElementsByTagName('img');
+        if (imgElements.length <= 5) {
+            alert(`图片数量不足6个（共${imgElements.length}个），无需导出。`);
+            return;
+        }
+
+        const pcxdataList = Array.from(imgElements)
+            .slice(0, 99)
+            .map((img, index) => {
+                const src = img.src || img.getAttribute('src') || '';
+                let cleanedSrc = src.replace(/(?:_\d+x\d+q\d+[^?]*?\.(?:jpg|png|webp)?_\.(?:jpg|png|webp)|_q\d+[^?]*?\.(?:jpg|png|webp)?_\.(?:jpg|png|webp)|\?.*)/g, '').trim();
+                const finalUrl = cleanedSrc.startsWith('//') ? 'https:' + cleanedSrc : cleanedSrc;
+                return [`详情${index + 1}`, finalUrl];
+            })
+            .filter(row => row[1]);
+
+        if (pcxdataList.length === 0) {
+            alert("未找到有效的图片链接。");
+            return;
+        }
+
+        const csvContent = [
+            "文本内容,图片URL",
+            ...pcxdataList.map(row => {
+                const text = row[0].replace(/"/g, '""');
+                const url = row[1].replace(/"/g, '""');
+                return `"${text}","${url}"`;
+            })
+        ].join("\n");
+
+        const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+        const downloadUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = downloadUrl;
+        link.download = "淘宝PC详情数据.csv";
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(downloadUrl);
+        console.log("CSV文件已生成，共提取数据:", pcxdataList.length);
+    } catch (error) {
+        console.error("提取失败:", error);
+        alert("提取失败: " + error.message);
+    }
+}
+
+function extractVideoSrcFromPage() {
+    const currentDomain = window.location.hostname;
+    console.log(currentDomain);
+    const condition1 = currentDomain.includes("item.taobao.com");
+    const condition2 = currentDomain.includes("detail.tmall.com");
+
+    if (!condition1 && !condition2) {
+        alert("当前域名不符合要求。");
+        return;
+    }
+    try {
+        const videoElement = document.querySelector('#videox-video-el');
+        console.log(videoElement);
+        if (!videoElement) {
+            throw new Error("No video element with id 'videox-video-el' found.");
+        }
+
+        const videoSrc = videoElement.getAttribute('src');
+        if (!videoSrc) {
+            throw new Error("No 'src' attribute found on the video element.");
+        }
+        const result = `https:${videoSrc}`;
+        console.log(result);
+
+        let tempInput = document.createElement("input");
+        document.body.appendChild(tempInput);
+        tempInput.value = result;
+        tempInput.select();
+        document.execCommand("copy");
+        document.body.removeChild(tempInput);
+    } catch (error) {
+        console.error("An error occurred:", error.message);
+        alert("Error: " + error.message);
+    }
+}
+
+function extractshopname() {
+    const currentDomain = window.location.hostname;
+    console.log(currentDomain);
+    const condition1 = currentDomain.includes("item.taobao.com");
+    const condition2 = currentDomain.includes("detail.tmall.com");
+
+    if (!condition1 && !condition2) {
+        alert("当前域名不符合要求。");
+        return;
+    }
+
+    const getAndCopyShopName = async () => {
+        try {
+            let shopName = null;
+            const scriptTags = document.querySelectorAll('script');
+
+            for (const script of scriptTags) {
+                const scriptContent = script.textContent || script.innerText;
+                const regex = /["']shopname["']\s*:\s*["']([^"']+)["']/i;
+                const match = scriptContent.match(regex);
+                if (match && match[1]) {
+                    shopName = match[1].trim();
+                    break;
+                }
+            }
+
+            if (!shopName) {
+                const allTitleSpans = document.querySelectorAll('span[title]');
+                for (const span of allTitleSpans) {
+                    const title = span.getAttribute('title').trim();
+                    if (title && title.length > 2 && title.length < 30) {
+                        shopName = title;
+                        break;
+                    }
+                }
+            }
+
+            console.log('找到的店铺名:', shopName);
+            if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(shopName);
+            } else {
+                const tempInput = document.createElement("input");
+                document.body.appendChild(tempInput);
+                tempInput.value = shopName;
+                tempInput.select();
+                document.execCommand("copy");
+                document.body.removeChild(tempInput);
+            }
+        } catch (error) {
+            console.error("获取/复制店铺名失败:", error.message);
+            alert("操作失败：" + error.message);
+        }
+    };
+    getAndCopyShopName();
+}
+
+function extractIditemdid() {
+    const currentDomain = window.location.hostname;
+    console.log(currentDomain);
+    const condition1 = currentDomain.includes("item.taobao.com");
+    const condition2 = currentDomain.includes("detail.tmall.com");
+
+    if (!condition1 && !condition2) {
+        alert("当前域名不符合要求。");
+        return;
+    }
+    try {
+        const webpageText = document.documentElement.outerHTML;
+        const itemIdRegex = /data-item="(\d+)"/;
+        const itemIdMatch = webpageText.match(itemIdRegex);
+
+        if (!itemIdMatch) {
+            throw new Error("No match found for data-item attribute.");
+        }
+
+        const itemId = itemIdMatch[1];
+        console.log(itemId);
+        let tempInput = document.createElement("input");
+        document.body.appendChild(tempInput);
+        tempInput.value = itemId;
+        tempInput.select();
+        document.execCommand("copy");
+        document.body.removeChild(tempInput);
+    } catch (error) {
+        console.error("An error occurred:", error.message);
+        alert("Error: " + error.message);
+    }
+}
+
+function extractitemd1link() {
+    try {
+        const currentDomain = window.location.hostname;
+        const condition1 = currentDomain === 'item.taobao.com';
+        const condition2 = currentDomain === 'detail.tmall.com';
+
+        if (!(condition1 || condition2)) {
+            alert("未知域名，仅支持淘宝(item.taobao.com)和天猫(detail.tmall.com)");
+            return;
+        }
+
+        function waitForThumbnails() {
+            const xpath = '//div[contains(@class, "thumbnails--")]/div[1]';
+            const targetElement1 = document.evaluate(
+                xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null
+            ).singleNodeValue;
+
+            if (!targetElement1) {
+                console.log('⏳ 缩略图容器未找到，500ms后重试...');
+                setTimeout(waitForThumbnails, 500);
+                return;
+            }
+
+            const imgElement = targetElement1.querySelector('img');
+            if (!imgElement || !imgElement.src) {
+                console.log('⏳ 图片元素未加载，500ms后重试...');
+                setTimeout(waitForThumbnails, 500);
+                return;
+            }
+
+            let imgSrc = imgElement.src;
+            let cleanedImageUrl = imgSrc.replace(/(?:_\d+x\d+q\d+[^?]*?\.(?:jpg|png|webp)?_\.(?:jpg|png|webp)|_q\d+[^?]*?\.(?:jpg|png|webp)?_\.(?:jpg|png|webp)|\?.*)/g, '').trim();
+
+            if (cleanedImageUrl.startsWith("//")) {
+                cleanedImageUrl = "https:" + cleanedImageUrl;
+            }
+
+            console.log('原始图片地址:', cleanedImageUrl);
+            const tempInput = document.createElement("input");
+            tempInput.style.position = 'fixed';
+            tempInput.style.opacity = 0;
+            document.body.appendChild(tempInput);
+            tempInput.value = cleanedImageUrl;
+            tempInput.select();
+            document.execCommand("copy");
+            document.body.removeChild(tempInput);
+            alert("已复制到剪切板，按 Ctrl+V 粘贴使用\n主图链接：" + cleanedImageUrl);
+        }
+        waitForThumbnails();
+    } catch (error) {
+        console.error("An error occurred:", error);
+        alert("Error: " + error.message);
+    }
+}
+
+function extractcheack() {
+    const currentDomain = window.location.hostname;
+    console.log(currentDomain);
+    const condition1 = currentDomain.includes("item.taobao.com");
+    const condition2 = currentDomain.includes("detail.tmall.com");
+
+    if (condition1 || condition2) {
+        alert("当前域名不符合要求。");
+        return;
+    }
+
+    var inputElements = document.querySelectorAll('.zzb_item_checbox.zzb_item_checbox_hasSold');
+    inputElements.forEach(function (inputElement) {
+        inputElement.style.transform = 'scale(2)';
+        inputElement.style.transformOrigin = '0 0';
+    });
+
+    var checkboxElements = document.querySelectorAll('.hsq-checkbox__inner');
+    checkboxElements.forEach(function (spanElement) {
+        spanElement.style.width = '100px';
+        spanElement.style.height = '30px';
+        spanElement.style.border = '1px solid #000';
+    });
+}
+
+function titleandlink() {
+    const currentDomain = window.location.hostname;
+    console.log(currentDomain);
+    const condition1 = currentDomain.includes("item.taobao.com");
+    const condition2 = currentDomain.includes("detail.tmall.com");
+
+    if (!condition1 && !condition2) {
+        alert("当前域名不符合要求。");
+        return;
+    }
+
+    const getTitleLinkAndShopName = async () => {
+        try {
+            const webpageText = document.documentElement.outerHTML;
+            const itemIdRegex = /data-item="(\d+)"/;
+            const itemIdMatch = webpageText.match(itemIdRegex);
+
+            if (!itemIdMatch) {
+                throw new Error("No match found for data-item attribute.");
+            }
+
+            const itemId = "https://detail.tmall.com/item.htm?id=" + itemIdMatch[1];
+            console.log(itemId);
+
+            const titleElement = document.querySelector('title');
+            if (!titleElement) {
+                throw new Error("未找到title标签");
+            }
+            const titleText1 = titleElement.textContent.trim();
+            console.log(titleText1);
+
+            const isTaobao = currentDomain === 'item.taobao.com';
+            const isTmall = currentDomain === 'detail.tmall.com';
+            let cleaned = '';
+
+            if (isTaobao) {
+                cleaned = titleText1.replace(/\s*-淘宝网\s*$/g, '').trim();
+            } else if (isTmall) {
+                cleaned = titleText1.replace(/\s*-tmall\.com天猫\s*$/g, '').trim();
+            } else {
+                cleaned = titleText1;
+            }
+
+            let shopName = null;
+            const scriptTags = document.querySelectorAll('script');
+            for (const script of scriptTags) {
+                const scriptContent = script.textContent || script.innerText;
+                const regex = /["']shopname["']\s*:\s*["']([^"']+)["']/i;
+                const match = scriptContent.match(regex);
+                if (match && match[1]) {
+                    shopName = match[1].trim();
+                    break;
+                }
+            }
+
+            if (!shopName) {
+                const allTitleSpans = document.querySelectorAll('span[title]');
+                for (const span of allTitleSpans) {
+                    const title = span.getAttribute('title').trim();
+                    if (title && title.length > 2 && title.length < 30) {
+                        shopName = title;
+                        break;
+                    }
+                }
+            }
+
+            console.log('找到的店铺名:', shopName);
+
+            function getTargetPrice() {
+                const allSpans = document.querySelectorAll('span');
+                let targetParentDiv = null;
+
+                for (const span of allSpans) {
+                    const text = span.textContent.trim();
+                    if (text.includes('￥')) {
+                        targetParentDiv = span.parentElement;
+                        break;
+                    }
+                    if (!targetParentDiv && text.includes('券后')) {
+                        targetParentDiv = span.parentElement;
+                        break;
+                    }
+                    if (!targetParentDiv && text.includes('秒杀价')) {
+                        targetParentDiv = span.parentElement;
+                        break;
+                    }
+                }
+
+                if (!targetParentDiv) {
+                    console.log('❌ 未找到价格区域');
+                    return null;
+                }
+
+                const siblingSpans = targetParentDiv.querySelectorAll(':scope > span');
+                for (const s of siblingSpans) {
+                    const content = s.textContent.trim();
+                    if (/^\d+(\.\d+)?$/.test(content)) {
+                        console.log('✅ 找到价格：', content);
+                        return content;
+                    }
+                }
+                console.log('❌ 未找到价格数字');
+                return null;
+            }
+
+            const price = getTargetPrice();
+            console.log('最终价格：', price);
+            const titleandlinks1 = shopName + "," + itemId + "," + cleaned + "," + price;
+            console.log("最终结果:", titleandlinks1);
+
+            if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(titleandlinks1);
+            } else {
+                const tempInput = document.createElement("input");
+                document.body.appendChild(tempInput);
+                tempInput.value = titleandlinks1;
+                tempInput.select();
+                document.execCommand("copy");
+                document.body.removeChild(tempInput);
+            }
+        } catch (error) {
+            console.error("An error occurred:", error.message);
+            alert("Error: " + error.message);
+        }
+    };
+    getTitleLinkAndShopName();
+}
+
+function e1xtractImgSrcByXPathsku() {
+    try {
+        const userNickEl = document.querySelector('p.site-nav-user-nick');
+        let needBackupPlan = false;
+
+        if (userNickEl) {
+            const nickText = userNickEl.textContent.trim();
+            needBackupPlan = nickText.includes(':');
+        }
+
+        if (needBackupPlan) {
+            console.log("检测到昵称含冒号，执行备用方案");
+            const skuValueWraps = document.querySelectorAll('div[class*="skuValueWrap"]');
+
+            if (skuValueWraps.length === 0) {
+                alert("备用方案：未找到 skuValueWrap 元素！");
+                return;
+            }
+
+            let targetSkuValueWrap = null;
+            for (const skuValueWrap of skuValueWraps) {
+                const parentDiv = skuValueWrap.parentElement;
+                if (!parentDiv || parentDiv.tagName !== 'DIV') continue;
+
+                const firstChildDiv = parentDiv.querySelector(':scope > div:first-child');
+                if (!firstChildDiv) continue;
+
+                const divText = firstChildDiv.textContent.trim().toLowerCase();
+                if (divText.includes('颜色') || divText.includes('颜色分类')) {
+                    targetSkuValueWrap = skuValueWrap;
+                    break;
+                }
+                if (divText.includes('商品规格')) {
+                    targetSkuValueWrap = skuValueWrap;
+                    break;
+                }
+            }
+
+            if (!targetSkuValueWrap) {
+                alert("备用方案：所有 skuValueWrap 均未匹配到【颜色分类】！");
+                return;
+            }
+
+            console.log('✅ 成功定位到目标 skuValueWrap：', targetSkuValueWrap);
+            const contentWrap = targetSkuValueWrap.querySelector('div[class*="contentWrap"]');
+            if (!contentWrap) {
+                alert("备用方案：未找到 contentWrap 元素！");
+                return;
+            }
+
+            const firstChildDiv = contentWrap.querySelector(':scope > div');
+            if (!firstChildDiv) {
+                alert("备用方案：未找到 contentWrap 下的子元素！");
+                return;
+            }
+
+            const itemDivs = Array.from(firstChildDiv.children).filter(child => child.tagName === 'DIV');
+            if (itemDivs.length === 0) {
+                alert("备用方案：未找到任何SKU数据！");
+                return;
+            }
+
+            const dataList = [];
+            itemDivs.forEach((item, index) => {
+                const skuName = item.querySelector('span')?.getAttribute('title')?.trim() || `sku${index + 1}`;
+                const originalImgUrl = item.querySelector('img')?.src || "无图片";
+                const imgSrc = originalImgUrl.replace(/(?:_\d+x\d+q\d+[^?]*?\.(?:jpg|png|webp)?_\.(?:jpg|png|webp)|_q\d+[^?]*?\.(?:jpg|png|webp)?_\.(?:jpg|png|webp)|\?.*)/g, '').trim();
+                dataList.push([`sku${index + 1}.${skuName}`, imgSrc]);
+            });
+
+            exportToCsv(dataList, "淘宝商品SKU备用方案数据.csv");
+        } else {
+            console.log("未检测到冒号，执行原始方案");
+            const currentDomain = window.location.hostname;
+            const condition1 = currentDomain === 'item.taobao.com';
+            const condition2 = currentDomain === 'detail.tmall.com';
+
+            let targetElement = null;
+            if (condition1 || condition2) {
+                const xpath = '//*[@id="tbpcDetail_SkuPanelBody"]/div[contains(., "颜色分类")]/div/div[1]/div[contains(., "颜色分类")]/div[2]/div/div';
+                targetElement = document.evaluate(
+                    xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null
+                ).singleNodeValue;
+
+                if (!targetElement) {
+                    alert("TM未找到商品规格数据，请确认页面是否加载完成！");
+                    return;
+                }
+            } else {
+                alert("未知域名，仅支持淘宝(item.taobao.com)和天猫(detail.tmall.com)");
+                return;
+            }
+
+            const dataList = [];
+            const childDivs = Array.from(targetElement.children).filter(child => child.tagName === 'DIV');
+
+            childDivs.forEach((childDiv, index) => {
+                const spanText = childDiv.querySelector('span')?.textContent.trim() || "无文本";
+                const originalImgUrl = childDiv.querySelector('img')?.src || "无图片URL";
+                const imgSrc = originalImgUrl.replace(/(?:_\d+x\d+q\d+[^?]*?\.(?:jpg|png|webp)?_\.(?:jpg|png|webp)|_q\d+[^?]*?\.(?:jpg|png|webp)?_\.(?:jpg|png|webp)|\?.*)/g, '').trim();
+                const enhancedText = `sku${index + 1}.${spanText}`;
+                dataList.push([enhancedText, imgSrc]);
+            });
+
+            exportToCsv(dataList, "淘宝商品SKU图数据.csv");
+        }
+    } catch (error) {
+        console.error("错误:", error);
+        alert("提取失败: " + error.message);
+    }
+}
+
+function exportToCsv(dataList, fileName) {
+    try {
+        const csvContent = [
+            "文本内容,图片URL",
+            ...dataList.map(row => `"${row[0]}","${row[1]}"`)
+        ].join("\n");
+
+        const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+        const downloadUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = downloadUrl;
+        link.download = fileName;
+        link.click();
+
+        setTimeout(() => {
+            URL.revokeObjectURL(downloadUrl);
+            link.remove();
+        }, 100);
+
+        console.log("CSV文件已生成，共提取数据:", dataList.length);
+        alert(`提取成功！共 ${dataList.length} 条SKU数据`);
+    } catch (err) {
+        console.error("导出CSV失败：", err);
+        alert("导出文件失败");
+    }
+}
+
+function itemZimg() {
+    try {
+        const currentDomain = window.location.hostname;
+        const condition1 = currentDomain === 'item.taobao.com';
+        const condition2 = currentDomain === 'detail.tmall.com';
+
+        let targetElement = null;
+        if (condition1 || condition2) {
+            const xpath = '//div[contains(@class, "thumbnails--")]';
+            targetElement = document.evaluate(
+                xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null
+            ).singleNodeValue;
+
+            if (!targetElement) {
+                alert("未找到指定数据类型ZT，请确认页面是否加载完成！");
+                return;
+            }
+        } else {
+            alert("未知域名，仅支持淘宝(item.taobao.com)和天猫(detail.tmall.com)");
+            return;
+        }
+
+        const pcdataList = [];
+        const pcchildDivs = Array.from(targetElement.children).filter(child => child.tagName === 'DIV');
+
+        pcchildDivs.forEach((pcchildDiv, index) => {
+            const pcspanText = `主图${index + 1}`;
+            const pcoriginalImgUrl = pcchildDiv.querySelector('img')?.src || "无图片URL";
+            const pcimgSrc = pcoriginalImgUrl.replace(/(?:_\d+x\d+q\d+[^?]*?\.(?:jpg|png|webp)?_\.(?:jpg|png|webp)|_q\d+[^?]*?\.(?:jpg|png|webp)?_\.(?:jpg|png|webp)|\?.*)/g, '').trim();
+            pcdataList.push([pcspanText, pcimgSrc]);
+        });
+
+        const csvContent = [
+            "文本内容,图片URL",
+            ...pcdataList.map(row => `"${row[0]}","${row[1]}"`)
+        ].join("\n");
+
+        const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+        const downloadUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = downloadUrl;
+        link.download = "淘宝PC主图数据.csv";
+        link.click();
+
+        setTimeout(() => {
+            URL.revokeObjectURL(downloadUrl);
+            link.remove();
+        }, 100);
+
+        console.log("CSV文件已生成，共提取数据:", pcdataList.length);
+    } catch (error) {
+        console.error("错误:", error);
+        alert("提取失败: " + error.message);
+    }
+}
+
+function itemlink() {
+    const currentDomain = window.location.hostname;
+    console.log(currentDomain);
+    const condition1 = currentDomain.includes("item.taobao.com");
+    const condition2 = currentDomain.includes("detail.tmall.com");
+
+    if (!condition1 && !condition2) {
+        alert("当前域名不符合要求。");
+        return;
+    }
+    try {
+        const webpageText = document.documentElement.outerHTML;
+        const itemIdRegex = /data-item="(\d+)"/;
+        const itemIdMatch = webpageText.match(itemIdRegex);
+
+        if (!itemIdMatch) {
+            throw new Error("No match found for data-item attribute.");
+        }
+
+        const itemId = "https://detail.tmall.com/item.htm?id=" + itemIdMatch[1];
+        console.log(itemId);
+        const links = itemId;
+        console.log("最终结果:", links);
+
+        let tempInput = document.createElement("input");
+        document.body.appendChild(tempInput);
+        tempInput.value = links;
+        tempInput.select();
+        document.execCommand("copy");
+        document.body.removeChild(tempInput);
+    } catch (error) {
+        console.error("An error occurred:", error.message);
+        alert("Error: " + error.message);
+    }
+}
+
+function getAllText() {
+    const container = document.querySelector('span');
+    let fullText = '';
+    const extractText = (node) => {
+        if (node.nodeType === Node.TEXT_NODE) {
+            fullText += node.textContent.trim();
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+            node.childNodes.forEach(extractText);
+        }
+    };
+    extractText(container);
+    return fullText;
+}
+
+function extractShopLinkFromPage() {
+    const currentDomain = window.location.hostname;
+    console.log("当前域名:", currentDomain);
+    const condition1 = currentDomain.includes("item.taobao.com");
+    const condition2 = currentDomain.includes("detail.tmall.com");
+
+    if (!condition1 && !condition2) {
+        alert("当前域名不符合要求。");
+        return;
+    }
+
+    const getAndCopyShopLink = async () => {
+        try {
+            const xpath = "//span[contains(text(), '进店')]";
+            const spanElement = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+
+            if (!spanElement) {
+                throw new Error("未找到包含'进店'文本的span元素。");
+            }
+            console.log("找到目标span元素:", spanElement);
+
+            const aElement = spanElement.closest('a');
+            if (!aElement) {
+                throw new Error("找到的span元素没有父级a标签。");
+            }
+            console.log("找到父级a标签:", aElement);
+
+            const hrefValue1 = aElement.getAttribute('href');
+            if (!hrefValue1) {
+                throw new Error("a标签中未找到href属性值。");
+            }
+            console.log("提取到的href值:", hrefValue1);
+            const hrefValue = "https:" + hrefValue1;
+
+            if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(hrefValue);
+            } else {
+                const tempInput = document.createElement("input");
+                document.body.appendChild(tempInput);
+                tempInput.value = hrefValue;
+                tempInput.select();
+                document.execCommand("copy");
+                document.body.removeChild(tempInput);
+            }
+        } catch (error) {
+            console.error("提取链接时出错:", error.message);
+        }
+    };
+    getAndCopyShopLink();
+}
+
+function getScriptContentWithFeature(feature) {
+    try {
+        console.log(`开始查找包含特征 "${feature}" 的script标签...`);
+        const allScripts = document.querySelectorAll('script');
+        if (allScripts.length === 0) {
+            console.error('错误：页面中未找到任何script标签');
+            return '';
+        }
+
+        for (let script of allScripts) {
+            const scriptContent = script.textContent || script.innerText || '';
+            const normalizedContent = scriptContent.replace(/\s+/g, ' ').trim();
+            const normalizedFeature = feature.replace(/\s+/g, ' ').trim();
+
+            if (normalizedContent.includes(normalizedFeature)) {
+                console.log('✅ 找到匹配的script标签，提取内容成功');
+                return scriptContent;
+            }
+        }
+
+        console.warn(`⚠️ 未找到包含特征 "${feature}" 的script标签`);
+        return '';
+    } catch (error) {
+        console.error('❌ 提取script标签内容失败：', error.message);
+        return '';
+    }
+}
+
+function extractBValueFromTruncatedCode(rawCode) {
+    try {
+        if (!rawCode || rawCode.trim() === '') {
+            throw new Error('原始代码字符串为空，无法解析');
+        }
+
+        const bStart = rawCode.indexOf('var b = ') + 7;
+        if (bStart === 6) {
+            throw new Error('未找到 "var b = " 关键字');
+        }
+
+        let bContent = rawCode.substring(bStart);
+        const bracePositions = [];
+
+        for (let i = 0; i < bContent.length; i++) {
+            if (bContent[i] === '}') bracePositions.push(i);
+        }
+
+        if (bracePositions.length < 5) {
+            throw new Error('无法定位有效的JSON结束位置：括号数量不足');
+        }
+
+        const validEndPos = bracePositions[bracePositions.length - 5] + 1;
+        bContent = bContent.substring(0, validEndPos);
+
+        let cleanJson = bContent
+            .replace(/u…$/, '')
+            .replace(/'/g, '"')
+            .replace(/,\s*$/, '')
+            .replace(/\"\"false\"\"/g, '"false"');
+
+        cleanJson = fixUnclosedJson(cleanJson);
+        const bObject = JSON.parse(cleanJson);
+        const priceInfoList = getNumberedPriceText(bObject);
+
+        return {
+            success: true,
+            data: priceInfoList,
+            error: null
+        };
+    } catch (e) {
+        return {
+            success: false,
+            error: `提取失败：${e.message}`,
+            data: []
+        };
+    }
+}
+
+function fixUnclosedJson(jsonStr) {
+    let openBraces = 0, openBrackets = 0;
+    for (let char of jsonStr) {
+        if (char === '{') openBraces++;
+        else if (char === '}') openBraces--;
+        else if (char === '[') openBrackets++;
+        else if (char === ']') openBrackets--;
+    }
+
+    let fixed = jsonStr;
+    while (openBraces > 0) { fixed += '}'; openBraces--; }
+    while (openBrackets > 0) { fixed += ']'; openBrackets--; }
+    return fixed;
+}
+
+function getNumberedPriceText(bObject) {
+    try {
+        const { res = {} } = bObject?.loaderData?.home?.data || {};
+        const { skuCore = {}, skuBase = {} } = res;
+        const { sku2info = {} } = skuCore;
+
+        if (typeof sku2info !== 'object') {
+            throw new Error('未找到skuCore.sku2info字段');
+        }
+        if (!Array.isArray(skuBase.skus)) {
+            throw new Error('未找到skuBase.skus数组');
+        }
+        if (!skuBase.props || !Array.isArray(skuBase.props[0]?.values)) {
+            throw new Error('未找到skuBase.props[0].values规格列表');
+        }
+
+        const propValues = skuBase.props[0].values;
+        const priceInfoList = [];
+
+        skuBase.skus.forEach((skuItem, index) => {
+            const { propPath, skuId } = skuItem || {};
+            if (!skuId || skuId === '0') return;
+            if (!propPath) {
+                console.warn(`序号${index + 1} - skuId: ${skuId} 缺失propPath`);
+                return;
+            }
+
+            const vid = propPath.split(':')[1];
+            if (!vid) {
+                console.warn(`skuId: ${skuId} - propPath解析失败，值为：${propPath}`);
+                return;
+            }
+
+            const matchedProp = propValues.find(item => item.vid === vid);
+            const propName = matchedProp?.name || `未知规格(vid=${vid})`;
+            const skuInfo = sku2info[skuId];
+
+            if (!skuInfo) {
+                console.warn(`skuId: ${skuId} 未在sku2info中找到对应价格`);
+                return;
+            }
+
+            const originalPrice = skuInfo.price?.priceText || '未知原价';
+            const couponPrice = skuInfo.subPrice?.priceText || originalPrice;
+
+            priceInfoList.push({
+                序号: index + 1,
+                skuId: skuId,
+                规格名称: propName,
+                优惠前价格: originalPrice,
+                券后价格: couponPrice
+            });
+        });
+
+        return priceInfoList;
+    } catch (e) {
+        console.error('解析SKU价格信息失败：', e.message);
+        return [];
+    }
+}
+
+function downloadFinalResultAsCSV(priceInfoList, fileNamePrefix = 'SKU价格信息') {
+    try {
+        if (!Array.isArray(priceInfoList) || priceInfoList.length === 0) {
+            const warnMsg = '无匹配的SKU价格数据，无法生成CSV文件！';
+            console.warn(warnMsg);
+            alert(warnMsg);
+            return;
+        }
+
+        const headers = ['序号', 'SKU编号', '规格名称', '优惠前价格（元）', '券后价格（元）'];
+        const rows = priceInfoList.map(item => {
+            const escapeField = (value) => {
+                if (value === undefined || value === null) return '';
+                const strValue = String(value);
+                if (strValue.includes(',') || strValue.includes('"') || strValue.includes('\n') || strValue.includes('\r')) {
+                    return `"${strValue.replace(/"/g, '""')}"`;
+                }
+                return strValue;
+            };
+
+            return [
+                escapeField(item.序号),
+                escapeField(item.skuId),
+                escapeField(item.规格名称),
+                escapeField(item.优惠前价格),
+                escapeField(item.券后价格)
+            ].join(',');
+        });
+
+        const csvContent = [headers.join(','), ...rows].join('\r\n');
+        const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv; charset=utf-8;' });
+        const timeStamp = new Date().toISOString().replace(/[:T.]/g, '-').slice(0, 19);
+        const safeFileName = `${fileNamePrefix}_${timeStamp}.csv`;
+
+        const link = document.createElement('a');
+        if (window.URL && URL.createObjectURL) {
+            link.href = URL.createObjectURL(blob);
+        } else {
+            link.href = 'data:text/csv;charset=utf-8,\uFEFF' + encodeURIComponent(csvContent);
+        }
+        link.download = safeFileName;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+
+        const clickEvent = new MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+            view: window
+        });
+        link.dispatchEvent(clickEvent);
+
+        setTimeout(() => {
+            document.body.removeChild(link);
+            if (window.URL && URL.revokeObjectURL) {
+                URL.revokeObjectURL(link.href);
+            }
+        }, 1000);
+
+        const successMsg = `✅ CSV文件生成成功！\n共导出 ${priceInfoList.length} 条SKU价格数据\n文件名：${safeFileName}`;
+        console.log(successMsg);
+        alert(successMsg);
+    } catch (csvError) {
+        const errorMsg = `生成CSV文件失败：${csvError.message}`;
+        console.error(errorMsg, csvError);
+        alert(errorMsg);
+    }
+}
+
+function getskutxtxinxi(feature = '!(function ()') {
+    try {
+        console.log('========== 开始提取SKU价格信息 ==========');
+        const rawScriptContent = getScriptContentWithFeature(feature);
+        if (!rawScriptContent) {
+            throw new Error('未提取到有效的script内容');
+        }
+
+        const parseResult = extractBValueFromTruncatedCode(rawScriptContent);
+        if (!parseResult.success) {
+            throw new Error(parseResult.error);
+        }
+
+        const priceInfoList = parseResult.data;
+        console.log('\n=== SKU价格信息解析结果 ===');
+        console.table(priceInfoList);
+        downloadFinalResultAsCSV(priceInfoList);
+        console.log('========== 提取流程执行完成 ==========');
+        return priceInfoList;
+    } catch (error) {
+        console.error('❌ 主流程执行出错：', error.message);
+        alert('提取SKU信息失败：' + error.message);
+        return [];
+    }
+}
